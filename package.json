@@ -6,10 +6,7 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "check-env": "node scripts/check-env.js",
-    "predev": "npm run check-env",
-    "prebuild": "npm run check-env"
+    "lint": "next lint"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.0",
