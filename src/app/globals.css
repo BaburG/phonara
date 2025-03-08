@@ -79,6 +79,12 @@
   --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
   --sidebar-border: oklch(0.92 0.004 286.32);
   --sidebar-ring: oklch(0.705 0.015 286.067);
+  
+  /* Custom colors */
+  --doctor-primary: 221 83% 53%;
+  --doctor-secondary: 213 94% 68%;
+  --patient-primary: 142 72% 29%;
+  --patient-secondary: 142 77% 73%;
 }
 
 .dark {
@@ -122,5 +128,140 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
   }
+}
+
+/* Custom animations */
+@keyframes pulse-recording {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.5;
+    transform: scale(1.05);
+  }
+}
+
+.animate-pulse-recording {
+  animation: pulse-recording 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Blooming gradients */
+.bloom-gradient {
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0) 70%),
+    linear-gradient(135deg, #f0f9ff 0%, #e1f5fe 100%);
+}
+
+.bloom-gradient-blue {
+  background: radial-gradient(circle at center, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0) 70%),
+    linear-gradient(135deg, #f0f9ff 0%, #e1f5fe 100%);
+}
+
+.bloom-gradient-green {
+  background: radial-gradient(circle at center, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0) 70%),
+    linear-gradient(135deg, #f0fffa 0%, #e1fef5 100%);
+}
+
+.bloom-gradient-header {
+  background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.15) 0%, rgba(99, 102, 241, 0) 70%),
+    linear-gradient(to right, #f9fafb, #f3f4f6);
+}
+
+.doctor-message {
+  background: linear-gradient(135deg, #3b82f6, #60a5fa);
+  box-shadow: 0 4px 15px -3px rgba(59, 130, 246, 0.3);
+}
+
+.patient-message {
+  background: linear-gradient(135deg, #10b981, #34d399);
+  box-shadow: 0 4px 15px -3px rgba(16, 185, 129, 0.3);
+}
+
+.received-message {
+  background: linear-gradient(135deg, #f9fafb, #f3f4f6);
+  box-shadow: 0 2px 10px -3px rgba(0, 0, 0, 0.1);
+}
+
+/* Message bubbles */
+.message-bubble {
+  position: relative;
+  border-radius: 1.25rem;
+  transition: all 0.2s ease;
+}
+
+.message-bubble:hover {
+  transform: translateY(-1px);
+}
+
+.message-bubble.sent {
+  border-bottom-right-radius: 0.25rem;
+}
+
+.message-bubble.received {
+  border-bottom-left-radius: 0.25rem;
+}
+
+/* Role toggle button */
+.role-toggle {
+  position: relative;
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.role-toggle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.3));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.role-toggle:hover::before {
+  opacity: 1;
+}
+
+.role-toggle.active {
+  transform: translateY(-2px);
+}
+
+/* Animated background */
+.animated-bg {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  background-size: 400% 400%;
+  animation: gradient-shift 15s ease infinite;
+}
+
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Subtle background pattern */
+.subtle-pattern {
+  background-color: #f8fafc;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+.dark .subtle-pattern {
+  background-color: #111827;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
 }

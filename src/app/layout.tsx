@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Inter, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
+import { Toaster } from "@/components/ui/toaster";
+
+const inter = Inter({ subsets: ["latin"] });
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,9 +17,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Phonara - Voice Transcription App",
-  description: "A simple voice transcription app powered by Google Gemini AI",
-  keywords: ["voice transcription", "speech-to-text", "audio transcription", "Gemini AI"],
+  title: "Phonara - Medical Translation App",
+  description: "A medical translation application for healthcare environments",
+  keywords: ["medical translation", "healthcare translation", "doctor patient communication"],
   authors: [{ name: "Phonara Team" }],
 };
 
@@ -28,9 +31,12 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${inter.className} ${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          <main className="min-h-screen bg-background">{children}</main>
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );
