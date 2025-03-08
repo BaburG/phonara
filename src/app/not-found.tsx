@@ -16,7 +16,7 @@ export default function NotFound() {
         <div className="max-w-md w-full p-6 bg-blue-50 border border-blue-200 rounded-lg text-center">
           <h2 className="text-2xl font-bold text-blue-700 mb-4">Page Not Found</h2>
           <p className="text-gray-700 mb-6">
-            The page you are looking for doesn't exist or has been moved.
+            The page you are looking for doesn&apos;t exist or has been moved.
           </p>
           <Button asChild>
             <Link href="/" className="flex items-center gap-2 justify-center">

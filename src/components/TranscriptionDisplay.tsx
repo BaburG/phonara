@@ -72,7 +72,7 @@ export function TranscriptionDisplay() {
               </svg>
             </div>
             <p>Record audio to see the transcription here</p>
-            <p className="text-sm mt-2">Click the "Start Recording" button above to begin</p>
+            <p className="text-sm mt-2">Click the &quot;Start Recording&quot; button above to begin</p>
           </div>
         </CardContent>
       </Card>

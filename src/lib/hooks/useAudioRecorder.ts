@@ -49,13 +49,42 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
     }
   }, []);
 
+  // Define stopRecording function first
+  const stopRecording = useCallback(() => {
+    // Stop the timer
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Stop the media recorder if it's recording
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      console.log('Stopping MediaRecorder...');
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (error) {
+        console.error('Error stopping MediaRecorder:', error);
+      }
+    }
+    
+    // Stop all audio tracks
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => {
+        track.stop();
+      });
+      streamRef.current = null;
+    }
+    
+    setIsRecording(false);
+  }, [setIsRecording]);
+
   // Auto-stop recording when reaching the maximum time
   useEffect(() => {
     if (isRecording && recordingTime >= MAX_RECORDING_TIME) {
       stopRecording();
       toast.info(`Recording automatically stopped after ${MAX_RECORDING_TIME / 60} minutes`);
     }
-  }, [isRecording, recordingTime]);
+  }, [isRecording, recordingTime, stopRecording]);
 
   // Clean up resources when component unmounts
   useEffect(() => {
@@ -170,35 +199,7 @@ export function useAudioRecorder(): UseAudioRecorderReturn {
       setError(error instanceof Error ? error.message : 'Failed to access microphone');
       toast.error('Failed to access microphone. Please check your permissions.');
     }
-  }, [setAudioBlob, setError, setIsProcessing, setIsRecording, setTranscription]);
-
-  const stopRecording = useCallback(() => {
-    // Stop the timer
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    
-    // Stop the media recorder if it's recording
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-      console.log('Stopping MediaRecorder...');
-      try {
-        mediaRecorderRef.current.stop();
-      } catch (error) {
-        console.error('Error stopping MediaRecorder:', error);
-      }
-    }
-    
-    // Stop all audio tracks
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => {
-        track.stop();
-      });
-      streamRef.current = null;
-    }
-    
-    setIsRecording(false);
-  }, [setIsRecording]);
+  }, [setAudioBlob, setError, setIsProcessing, setIsRecording, setTranscription, stopRecording]);
 
   // Helper function to get supported mime type
   function getSupportedMimeType(): string {

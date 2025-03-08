@@ -79,7 +79,7 @@ export async function POST(request: NextRequest) {
 
       // Return the transcription
       return NextResponse.json({ transcription });
-    } catch (transcribeError: any) {
+    } catch (transcribeError: unknown) {
       console.error('Transcription API error:', transcribeError);
       
       return NextResponse.json(
@@ -88,9 +88,9 @@ export async function POST(request: NextRequest) {
             ? transcribeError.message 
             : 'An error occurred during transcription',
           details: {
-            message: transcribeError?.message || 'Unknown error',
-            status: transcribeError?.status,
-            statusText: transcribeError?.statusText
+            message: transcribeError instanceof Error ? transcribeError.message : 'Unknown error',
+            status: (transcribeError as Record<string, unknown>)?.status,
+            statusText: (transcribeError as Record<string, unknown>)?.statusText
           }
         },
         { status: 500 }
