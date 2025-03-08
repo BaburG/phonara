@@ -68,7 +68,7 @@ export function formatTime(seconds: number): string {
  * @param wait - The debounce wait time in milliseconds
  * @returns A debounced function
  */
-export function debounce<T extends (...args: unknown[]) => unknown>(
+export function debounce<T extends (...args: any[]) => any>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
