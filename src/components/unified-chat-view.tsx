@@ -31,15 +31,15 @@ const translateText = async (text: string, from: string, to: string): Promise<st
   }
   
   try {
-    console.log(`Translating text from ${from} to ${to}: "${text}"`);
+    console.log(`Translating text to ${to}: "${text}"`);
     
     // Create a prompt for Gemini to translate the text
     const prompt = `
-    Translate the following text from ${getLanguageNameFromCode(from)} to ${getLanguageNameFromCode(to)}:
+    Translate the following text to ${getLanguageNameFromCode(to)}:
 
     "${text}"
     
-    Please provide ONLY the translated text without any explanations or notes. Do not include quotes around the translated text.
+    Please detect the source language automatically. Provide ONLY the translated text without any explanations, notes, or quotes. Do not include information about the source language or any additional commentary.
     `;
     
     // Use the same model-fetching logic as in transcribeAudioWithGemini
@@ -216,8 +216,8 @@ export default function UnifiedChatView() {
       
       // Visual feedback that recording has started
       toast({
-        title: "Recording started",
-        description: `Now recording ${role === "doctor" ? "doctor" : "patient"} audio in ${role === "doctor" ? doctorLanguage : patientLanguage}`,
+        title: "Listening started",
+        description: `Now listening to ${role === "doctor" ? "doctor" : "patient"} speech - any language will be detected automatically`,
         variant: "default",
       })
       
@@ -344,18 +344,18 @@ export default function UnifiedChatView() {
             console.log("Received transcription from Gemini:", transcription);
             
             // Parse the transcription (Handle the format returned by Gemini)
-            const extractedText = extractTranscription(transcription, role === "doctor" ? doctorLanguage : patientLanguage);
-            console.log("Extracted text that will be set:", extractedText);
+            const extractedResult = extractTranscription(transcription, role === "doctor" ? doctorLanguage : patientLanguage);
+            console.log("Extracted text that will be set:", extractedResult.text);
             
             // Set the recordingText state with the transcribed text
-            setRecordingText(extractedText);
+            setRecordingText(extractedResult.text);
             
             // Important: Continue directly to translation if we have text
-            if (extractedText.trim()) {
+            if (extractedResult.text.trim()) {
               // Wait a short time to ensure the UI updates before proceeding
               setTimeout(() => {
-                console.log("Processing extracted text for translation:", extractedText);
-                processTranslation(role, extractedText);
+                console.log("Processing extracted text for translation:", extractedResult.text);
+                processTranslation(role, extractedResult.text, extractedResult.detectedLanguage);
               }, 500);
             }
           } catch (error) {
@@ -395,37 +395,38 @@ export default function UnifiedChatView() {
     }
   }
 
-  // Update the extractTranscription function to properly handle the Gemini response format
-  const extractTranscription = (transcription: string, language: string): string => {
+  // Update the extractTranscription function to return both text and detected language
+  const extractTranscription = (transcription: string, language: string): { text: string; detectedLanguage: string } => {
     console.log("Raw transcription from Gemini:", transcription);
     
-    // If there's a "Language:" prefix, extract it
+    // The format should now always include "Language:" prefix
     if (transcription.includes("Language:")) {
       const lines = transcription.split('\n').filter(line => !!line.trim());
       console.log("Parsed transcription lines:", lines);
       
-      // For non-English, the format is typically:
+      // Format is now always:
       // Line 1: "Language: X"
       // Line 2: Original text in detected language
       // Line 3: "English Translation: ..."
       
-      // If we're using the source language, return the original text
+      // Extract the detected language
       const languageLine = lines[0];
-      const detectedLanguageCode = getLanguageCodeFromName(languageLine.replace("Language:", "").trim());
-      
-      console.log(`Detected language: ${detectedLanguageCode}, UI language: ${language}`);
+      const detectedLanguageName = languageLine.replace("Language:", "").trim();
+      const detectedLanguageCode = getLanguageCodeFromName(detectedLanguageName);
+      console.log(`Detected language: ${detectedLanguageName} (${detectedLanguageCode})`);
       
       // Check if available and get the transcribed text (line after language detection)
       if (lines.length >= 2) {
+        // Remove quotes if present
         const transcribedText = lines[1].replace(/^"/, '').replace(/"$/, '').trim();
         console.log("Extracted transcribed text:", transcribedText);
-        return transcribedText;
+        return { text: transcribedText, detectedLanguage: detectedLanguageCode };
       }
     }
     
-    // If no language detected or simple format, just return the text
-    console.log("Using raw transcription as fallback");
-    return transcription.trim();
+    // If no language detected or simple format, just return the text with default language
+    console.log("Using raw transcription as fallback with default language");
+    return { text: transcription.trim(), detectedLanguage: language };
   }
 
   // Helper function to convert language name to language code
@@ -455,7 +456,7 @@ export default function UnifiedChatView() {
   }
 
   // Create a separate function to handle the translation part
-  const processTranslation = async (role: "doctor" | "patient", text: string) => {
+  const processTranslation = async (role: "doctor" | "patient", text: string, detectedLanguage?: string) => {
     if (!text || !text.trim()) {
       console.log("No text to translate, skipping translation")
       return
@@ -466,7 +467,8 @@ export default function UnifiedChatView() {
 
     // Get the other role and their language
     const otherRole = role === "doctor" ? "patient" : "doctor"
-    const fromLanguage = role === "doctor" ? doctorLanguage : patientLanguage
+    // Use detected language if provided, otherwise use the selected language
+    const fromLanguage = detectedLanguage || (role === "doctor" ? doctorLanguage : patientLanguage)
     const toLanguage = role === "doctor" ? patientLanguage : doctorLanguage
 
     // Use Gemini for actual translation
@@ -549,7 +551,7 @@ export default function UnifiedChatView() {
           <div className="h-full flex flex-col items-center justify-center text-center p-6 text-muted-foreground">
             <MessageSquare className="h-12 w-12 mb-4 opacity-20" />
             <h3 className="text-lg font-medium mb-2">No messages yet</h3>
-            <p className="max-w-xs">Use the recording buttons below to start a conversation.</p>
+            <p className="max-w-xs">Use the listening buttons below to start a conversation in any language.</p>
           </div>
         )}
 
@@ -574,7 +576,7 @@ export default function UnifiedChatView() {
               <div className="space-y-3">
                 <div>
                   <p className="font-medium text-sm opacity-80">
-                    Original ({languages.find((lang) => lang.value === message.language)?.label}):
+                    Original ({languages.find((lang) => lang.value === message.language)?.label || "Unknown"}):
                   </p>
                   <p>{message.original}</p>
                 </div>
@@ -610,14 +612,14 @@ export default function UnifiedChatView() {
                 {isRecordingDoctor || (isTranscribing && activeRecordingRole === "doctor") ? "Doctor" : "Patient"}
               </span>
               <div className="flex items-center text-xs opacity-80">
-                <span className="mr-2">{isTranscribing ? "Transcribing" : "Recording"}</span>
+                <span className="mr-2">{isTranscribing ? "Transcribing" : "Listening"}</span>
                 <span className="flex h-2 w-2 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                 </span>
               </div>
             </div>
-            <p>{recordingText || (isTranscribing ? "Transcribing audio..." : "Recording...")}</p>
+            <p>{recordingText || (isTranscribing ? "Transcribing audio..." : "Listening...")}</p>
           </div>
         )}
         
@@ -673,7 +675,7 @@ export default function UnifiedChatView() {
                     </>
                   ) : (
                     <>
-                      <Mic className="h-4 w-4" /> Record
+                      <Mic className="h-4 w-4" /> Listen
                     </>
                   )}
                 </Button>
@@ -721,7 +723,7 @@ export default function UnifiedChatView() {
                     </>
                   ) : (
                     <>
-                      <Mic className="h-4 w-4" /> Record
+                      <Mic className="h-4 w-4" /> Listen
                     </>
                   )}
                 </Button>
