@@ -57,19 +57,16 @@ export async function transcribeAudioWithGemini(audioBuffer: ArrayBuffer): Promi
           }
         },
         { text: `
-    Your task is to transcribe the speech in the provided audio file **accurately**, regardless of the language spoken. Follow these rules:
+    Your task is to transcribe the speech in the provided audio file **accurately**. Follow these rules:
 
-    1. **If the audio is in English** → Transcribe the speech exactly as spoken, without any modifications.
-    2. **If the audio is in a language other than English** →  
-       - First, **detect the language** and state it at the beginning (e.g., "Language: Spanish").  
-       - Then, **transcribe the original speech** in its native language.  
-       - Finally, **provide an English translation** of the transcribed text directly below it.
+    1. **First, detect the language being spoken** and state it at the beginning (e.g., "Language: Spanish").
+    2. **Transcribe the original speech** in its native language exactly as spoken, without any modifications.
+    3. **Provide an English translation** of the transcribed text directly below it.
 
     **Example Output:**
 
-    // If the audio is in French:
     Language: French  
-    "Bonjour, comment allez-vous aujourd’hui ?"  
+    "Bonjour, comment allez-vous aujourd'hui ?"  
     **English Translation:** "Hello, how are you today?"
 
     Ensure the transcription is **verbatim**—do not summarize or omit any words.  
@@ -108,7 +105,7 @@ export async function transcribeAudioWithGemini(audioBuffer: ArrayBuffer): Promi
                 }
               },
               {
-                text: "Transcribe this audio accurately."
+                text: "Transcribe this audio accurately. First state the language detected, then provide the transcription in the original language, followed by an English translation."
               }
             ]
           }
