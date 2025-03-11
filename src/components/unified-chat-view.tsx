@@ -5,9 +5,11 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Mic, MicOff, Loader2, MessageSquare, UserCog, UserRound } from "lucide-react"
+import { Mic, MicOff, Loader2, MessageSquare, UserCog, UserRound, AlertCircle } from "lucide-react"
 import { useTranslationStore } from "@/lib/translation-store"
 import { cn } from "@/lib/utils"
+import { transcribeAudioWithGemini, isGeminiConfigured } from "@/lib/gemini"
+import { toast } from "@/hooks/use-toast"
 
 const languages = [
   { value: "en", label: "English", flag: "🇺🇸" },
@@ -20,13 +22,70 @@ const languages = [
   { value: "ja", label: "Japanese", flag: "🇯🇵" },
 ]
 
-// Mock translation function (in a real app, this would call a translation API)
-const translateText = async (text: string, from: string, to: string) => {
-  // Simulate API call delay
-  await new Promise((resolve) => setTimeout(resolve, 1000))
+// Replace mock translation with real Gemini translation
+const translateText = async (text: string, from: string, to: string): Promise<string> => {
+  if (!isGeminiConfigured()) {
+    console.log("Gemini not configured, using mock translation");
+    // Return a mock translation for demo purposes
+    return `[Translated from ${from} to ${to}]: ${text}`;
+  }
+  
+  try {
+    console.log(`Translating text from ${from} to ${to}: "${text}"`);
+    
+    // Create a prompt for Gemini to translate the text
+    const prompt = `
+    Translate the following text from ${getLanguageNameFromCode(from)} to ${getLanguageNameFromCode(to)}:
 
-  // Simple mock translation - in a real app, this would use a translation service
-  return `[Translated from ${from} to ${to}]: ${text}`
+    "${text}"
+    
+    Please provide ONLY the translated text without any explanations or notes. Do not include quotes around the translated text.
+    `;
+    
+    // Use the same model-fetching logic as in transcribeAudioWithGemini
+    const { GoogleGenerativeAI } = await import('@google/generative-ai');
+    const API_KEY = process.env.GOOGLE_AI_API_KEY || '';
+    const genAI = new GoogleGenerativeAI(API_KEY);
+    
+    // Try with the faster model first
+    try {
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.0-flash',
+      });
+      
+      console.log("Using Gemini 2.0 Flash model for translation");
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const translatedText = response.text();
+      
+      console.log(`Translation result: "${translatedText}"`);
+      return translatedText.trim();
+    } catch (error) {
+      console.warn("Gemini 2.0 Flash failed, trying Gemini 1.5 Pro for translation:", error);
+      
+      // Fallback to the more capable model
+      const fallbackModel = genAI.getGenerativeModel({
+        model: 'gemini-1.5-pro',
+      });
+      
+      const fallbackResult = await fallbackModel.generateContent(prompt);
+      const fallbackResponse = await fallbackResult.response;
+      const fallbackText = fallbackResponse.text();
+      
+      console.log(`Fallback translation result: "${fallbackText}"`);
+      return fallbackText.trim();
+    }
+  } catch (error) {
+    console.error("Translation error:", error);
+    // Fallback to simple mock translation if anything fails
+    return `[Translated from ${from} to ${to}]: ${text}`;
+  }
+}
+
+// Helper function to get language name from code
+const getLanguageNameFromCode = (code: string): string => {
+  const language = languages.find(lang => lang.value === code);
+  return language ? language.label : "Unknown";
 }
 
 export default function UnifiedChatView() {
@@ -38,10 +97,50 @@ export default function UnifiedChatView() {
   const [recordingText, setRecordingText] = useState("")
   const [isTranslating, setIsTranslating] = useState(false)
   const [activeRecordingRole, setActiveRecordingRole] = useState<"doctor" | "patient" | null>(null)
-
+  
+  // New states for real audio recording
+  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null)
+  const [audioChunks, setAudioChunks] = useState<Blob[]>([])
+  const [isTranscribing, setIsTranscribing] = useState(false)
+  const [geminiConfigured, setGeminiConfigured] = useState(false)
+  
+  // Added to prevent hydration mismatch
+  const [mounted, setMounted] = useState(false)
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const { conversations, addConversation } = useTranslationStore()
+
+  // Initialize and check if Gemini is configured
+  useEffect(() => {
+    setGeminiConfigured(isGeminiConfigured())
+  }, [])
+  
+  // Update the useEffect to also handle mounting state
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Use this separate useEffect for scroll behavior to avoid mixing concerns
+  useEffect(() => {
+    if (mounted) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    }
+  }, [conversations.length, mounted])
+
+  // Cleanup effect for MediaRecorder when component unmounts
+  useEffect(() => {
+    return () => {
+      if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        try {
+          mediaRecorder.stop();
+          mediaRecorder.stream.getTracks().forEach(track => track.stop());
+        } catch (error) {
+          console.error("Error cleaning up media recorder:", error);
+        }
+      }
+    };
+  }, [mediaRecorder]);
 
   const handleRecording = (role: "doctor" | "patient") => {
     if (role === "doctor") {
@@ -59,7 +158,7 @@ export default function UnifiedChatView() {
     }
   }
 
-  const startRecording = (role: "doctor" | "patient") => {
+  const startRecording = async (role: "doctor" | "patient") => {
     // Don't allow recording from both roles simultaneously
     if (isRecordingDoctor || isRecordingPatient) {
       return
@@ -73,8 +172,79 @@ export default function UnifiedChatView() {
       setIsRecordingPatient(true)
     }
 
-    // In a real app, we would start recording audio here
-    // For this demo, we'll simulate typing after a delay
+    // Clear any previous recording data
+    setAudioChunks([])
+    setRecordingText("")
+
+    // Check if Gemini API is configured
+    if (!geminiConfigured) {
+      // If Gemini is not configured, fall back to the simulated recording
+      toast({
+        title: "Gemini API not configured",
+        description: "Using simulated recording. Add GOOGLE_AI_API_KEY to your .env.local file for real transcription.",
+        variant: "destructive",
+      })
+      
+      simulateRecording(role)
+      return
+    }
+
+    try {
+      // Request access to the microphone
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      
+      // Create a new MediaRecorder instance
+      const recorder = new MediaRecorder(stream)
+      setMediaRecorder(recorder)
+      
+      // Set up event listeners
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          setAudioChunks((chunks) => [...chunks, event.data])
+        }
+      }
+      
+      // Make sure we stop properly when the recording is complete
+      recorder.onstop = () => {
+        console.log("MediaRecorder stopped");
+        // Stop all tracks from the stream
+        stream.getTracks().forEach(track => track.stop());
+      }
+      
+      // Start recording
+      recorder.start(100) // Collect data every 100ms
+      
+      // Visual feedback that recording has started
+      toast({
+        title: "Recording started",
+        description: `Now recording ${role === "doctor" ? "doctor" : "patient"} audio in ${role === "doctor" ? doctorLanguage : patientLanguage}`,
+        variant: "default",
+      })
+      
+    } catch (error) {
+      console.error("Error starting recording:", error)
+      toast({
+        title: "Recording failed",
+        description: "Could not access microphone. Check permissions and try again.",
+        variant: "destructive",
+      })
+      
+      // Reset recording state
+      if (role === "doctor") {
+        setIsRecordingDoctor(false)
+      } else {
+        setIsRecordingPatient(false)
+      }
+      setActiveRecordingRole(null)
+      
+      // Fall back to simulated recording
+      simulateRecording(role)
+    }
+  }
+
+  // Function to simulate recording (used as fallback if real recording fails)
+  const simulateRecording = (role: "doctor" | "patient") => {
+    // This is the original simulation code
     setTimeout(() => {
       const sampleTexts = {
         doctor: {
@@ -107,44 +277,251 @@ export default function UnifiedChatView() {
   }
 
   const stopRecording = async (role: "doctor" | "patient") => {
+    console.log(`Stopping recording for ${role}...`);
+    
+    // Immediately update UI state to show recording is stopping
     if (role === "doctor") {
       setIsRecordingDoctor(false)
     } else {
       setIsRecordingPatient(false)
     }
+    
+    // Immediately clear the active recording role to update UI
+    setActiveRecordingRole(null);
 
-    setActiveRecordingRole(null)
-
-    if (recordingText.trim()) {
-      setIsTranslating(true)
-
-      // Get the other role and their language
-      const otherRole = role === "doctor" ? "patient" : "doctor"
-      const fromLanguage = role === "doctor" ? doctorLanguage : patientLanguage
-      const toLanguage = role === "doctor" ? patientLanguage : doctorLanguage
-
-      // Simulate translation
-      const translatedText = await translateText(recordingText, fromLanguage, toLanguage)
-
-      // Add to conversation store
-      addConversation({
-        role,
-        targetRole: otherRole,
-        language: fromLanguage,
-        original: recordingText,
-        translated: translatedText,
-        timestamp: new Date().toLocaleTimeString(),
-      })
-
-      setRecordingText("")
-      setIsTranslating(false)
+    // Handle real recording
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+      try {
+        console.log("Stopping MediaRecorder...");
+        setIsTranscribing(true);  // Show transcribing state immediately
+        
+        // Create a promise that will resolve when we get the final data
+        const dataAvailablePromise = new Promise<void>((resolve) => {
+          const originalDataAvailableHandler = mediaRecorder.ondataavailable;
+          
+          // Override the ondataavailable handler temporarily
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              setAudioChunks((chunks) => [...chunks, event.data]);
+            }
+            
+            // Restore original handler if there was one
+            if (originalDataAvailableHandler) {
+              // @ts-ignore - TypeScript doesn't like this assignment
+              mediaRecorder.ondataavailable = originalDataAvailableHandler;
+            }
+            
+            resolve();
+          };
+        });
+        
+        // Stop the recorder
+        mediaRecorder.stop();
+        
+        // Stop the audio tracks to make sure microphone is released
+        if (mediaRecorder.stream) {
+          mediaRecorder.stream.getTracks().forEach(track => {
+            console.log("Stopping track:", track.kind, track.id);
+            track.stop();
+          });
+        }
+        
+        // Wait for the final data
+        await dataAvailablePromise;
+        
+        // Now process the recorded audio
+        if (audioChunks.length > 0) {
+          try {
+            // Create a blob from the audio chunks
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            console.log(`Created audio blob of size: ${audioBlob.size} bytes`);
+            
+            // Convert to ArrayBuffer for Gemini API
+            const arrayBuffer = await audioBlob.arrayBuffer();
+            
+            // Transcribe using Gemini
+            const transcription = await transcribeAudioWithGemini(arrayBuffer);
+            console.log("Received transcription from Gemini:", transcription);
+            
+            // Parse the transcription (Handle the format returned by Gemini)
+            const extractedText = extractTranscription(transcription, role === "doctor" ? doctorLanguage : patientLanguage);
+            console.log("Extracted text that will be set:", extractedText);
+            
+            // Set the recordingText state with the transcribed text
+            setRecordingText(extractedText);
+            
+            // Important: Continue directly to translation if we have text
+            if (extractedText.trim()) {
+              // Wait a short time to ensure the UI updates before proceeding
+              setTimeout(() => {
+                console.log("Processing extracted text for translation:", extractedText);
+                processTranslation(role, extractedText);
+              }, 500);
+            }
+          } catch (error) {
+            console.error("Transcription error:", error);
+            
+            toast({
+              title: "Transcription failed",
+              description: "Could not transcribe audio. Falling back to simulation.",
+              variant: "destructive",
+            });
+            
+            // Fall back to simulated text
+            simulateRecording(role);
+          } finally {
+            // Make sure we always update the UI state
+            setIsTranscribing(false);
+          }
+        } else {
+          console.log("No audio chunks recorded");
+          setIsTranscribing(false);
+        }
+      } catch (error) {
+        console.error("Error stopping recording:", error);
+        // Make sure UI state is reset in case of error
+        setIsTranscribing(false);
+      }
+    } else {
+      // For simulation mode or if mediaRecorder isn't active
+      
+      // If we're in simulation mode, the recordingText should be set by simulateRecording
+      // Wait for it to complete before proceeding with translation
+      if (recordingText.trim()) {
+        setTimeout(() => {
+          processTranslation(role, recordingText);
+        }, 500);
+      }
     }
   }
 
-  // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [conversations.length])
+  // Update the extractTranscription function to properly handle the Gemini response format
+  const extractTranscription = (transcription: string, language: string): string => {
+    console.log("Raw transcription from Gemini:", transcription);
+    
+    // If there's a "Language:" prefix, extract it
+    if (transcription.includes("Language:")) {
+      const lines = transcription.split('\n').filter(line => !!line.trim());
+      console.log("Parsed transcription lines:", lines);
+      
+      // For non-English, the format is typically:
+      // Line 1: "Language: X"
+      // Line 2: Original text in detected language
+      // Line 3: "English Translation: ..."
+      
+      // If we're using the source language, return the original text
+      const languageLine = lines[0];
+      const detectedLanguageCode = getLanguageCodeFromName(languageLine.replace("Language:", "").trim());
+      
+      console.log(`Detected language: ${detectedLanguageCode}, UI language: ${language}`);
+      
+      // Check if available and get the transcribed text (line after language detection)
+      if (lines.length >= 2) {
+        const transcribedText = lines[1].replace(/^"/, '').replace(/"$/, '').trim();
+        console.log("Extracted transcribed text:", transcribedText);
+        return transcribedText;
+      }
+    }
+    
+    // If no language detected or simple format, just return the text
+    console.log("Using raw transcription as fallback");
+    return transcription.trim();
+  }
+
+  // Helper function to convert language name to language code
+  const getLanguageCodeFromName = (languageName: string): string => {
+    const languageMap: Record<string, string> = {
+      "English": "en",
+      "Spanish": "es",
+      "French": "fr",
+      "German": "de",
+      "Chinese": "zh",
+      "Arabic": "ar",
+      "Russian": "ru",
+      "Japanese": "ja"
+    };
+    
+    // Clean up the language name and try to find a match
+    const cleanName = languageName.trim().toLowerCase();
+    
+    for (const [name, code] of Object.entries(languageMap)) {
+      if (cleanName.includes(name.toLowerCase())) {
+        return code;
+      }
+    }
+    
+    // Default to English if no match found
+    return "en";
+  }
+
+  // Create a separate function to handle the translation part
+  const processTranslation = async (role: "doctor" | "patient", text: string) => {
+    if (!text || !text.trim()) {
+      console.log("No text to translate, skipping translation")
+      return
+    }
+    
+    console.log("Starting translation for text:", text)
+    setIsTranslating(true)
+
+    // Get the other role and their language
+    const otherRole = role === "doctor" ? "patient" : "doctor"
+    const fromLanguage = role === "doctor" ? doctorLanguage : patientLanguage
+    const toLanguage = role === "doctor" ? patientLanguage : doctorLanguage
+
+    // Use Gemini for actual translation
+    const translatedText = await translateText(text, fromLanguage, toLanguage)
+
+    // Add to conversation store
+    addConversation({
+      role,
+      targetRole: otherRole,
+      language: fromLanguage,
+      original: text,
+      translated: translatedText,
+      timestamp: new Date().toLocaleTimeString(),
+    })
+
+    setRecordingText("")
+    setIsTranslating(false)
+    console.log("Translation completed and added to conversation")
+  }
+
+  // Skip rendering the dynamic parts if not mounted yet
+  if (!mounted) {
+    return (
+      <Card className="overflow-hidden shadow-lg border-none bg-white">
+        <CardHeader className="pb-2 border-b bg-gradient-to-r from-blue-50 to-emerald-50 border-slate-200">
+          <CardTitle className="flex justify-between items-center">
+            <span className="text-slate-700">Translation Chat</span>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                Doctor: {languages.find((lang) => lang.value === doctorLanguage)?.flag}
+              </Badge>
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                Patient: {languages.find((lang) => lang.value === patientLanguage)?.flag}
+              </Badge>
+              {!geminiConfigured && (
+                <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 flex items-center gap-1">
+                  <AlertCircle className="h-3 w-3" /> Demo Mode
+                </Badge>
+              )}
+            </div>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="h-[50vh] overflow-y-auto p-6 space-y-4">
+          <div className="h-full flex flex-col items-center justify-center text-center p-6 text-muted-foreground">
+            <MessageSquare className="h-12 w-12 mb-4 opacity-20" />
+            <h3 className="text-lg font-medium mb-2">Loading conversation...</h3>
+          </div>
+        </CardContent>
+        <CardFooter className="border-t p-0">
+          {/* Simplified footer for server-rendered version */}
+          <div className="w-full p-4">Loading controls...</div>
+        </CardFooter>
+      </Card>
+    )
+  }
 
   return (
     <Card className="overflow-hidden shadow-lg border-none bg-white">
@@ -158,6 +535,11 @@ export default function UnifiedChatView() {
             <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
               Patient: {languages.find((lang) => lang.value === patientLanguage)?.flag}
             </Badge>
+            {!geminiConfigured && (
+              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" /> Demo Mode
+              </Badge>
+            )}
           </div>
         </CardTitle>
       </CardHeader>
@@ -209,30 +591,36 @@ export default function UnifiedChatView() {
           )
         })}
 
-        {activeRecordingRole && (
+        {(isRecordingDoctor || isRecordingPatient || isTranscribing) && (
           <div
             className={`message-bubble p-4 animate-pulse-recording ${
-              activeRecordingRole === "doctor" ? "received mr-auto doctor-message" : "sent ml-auto patient-message"
+              isRecordingDoctor || (isTranscribing && activeRecordingRole === "doctor") 
+                ? "received mr-auto doctor-message" 
+                : "sent ml-auto patient-message"
             }`}
           >
             <div className="flex items-center gap-2 mb-1">
               <span
-                className={`font-medium ${activeRecordingRole === "doctor" ? "text-blue-100" : "text-emerald-100"}`}
+                className={`font-medium ${
+                  isRecordingDoctor || (isTranscribing && activeRecordingRole === "doctor") 
+                    ? "text-blue-100" 
+                    : "text-emerald-100"
+                }`}
               >
-                {activeRecordingRole === "doctor" ? "Doctor" : "Patient"}
+                {isRecordingDoctor || (isTranscribing && activeRecordingRole === "doctor") ? "Doctor" : "Patient"}
               </span>
               <div className="flex items-center text-xs opacity-80">
-                <span className="mr-2">Recording</span>
+                <span className="mr-2">{isTranscribing ? "Transcribing" : "Recording"}</span>
                 <span className="flex h-2 w-2 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
                 </span>
               </div>
             </div>
-            <p>{recordingText || "Recording..."}</p>
+            <p>{recordingText || (isTranscribing ? "Transcribing audio..." : "Recording...")}</p>
           </div>
         )}
-
+        
         {isTranslating && (
           <div className="message-bubble received p-4 mx-auto received-message flex items-center gap-2 bg-white text-slate-700 max-w-[50%]">
             <Loader2 className="h-4 w-4 animate-spin" />
