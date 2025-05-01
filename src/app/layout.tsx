@@ -3,6 +3,7 @@ import { Inter, Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { Toaster } from "@/components/ui/toaster";
+import AuthProvider from '@/components/AuthProvider';
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -33,10 +34,12 @@ export default function RootLayout({
       <body
         className={`${inter.className} ${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Providers>
-          <main className="min-h-screen bg-background">{children}</main>
-          <Toaster />
-        </Providers>
+        <AuthProvider>
+          <Providers>
+            <main className="min-h-screen bg-background">{children}</main>
+            <Toaster />
+          </Providers>
+        </AuthProvider>
       </body>
     </html>
   );
