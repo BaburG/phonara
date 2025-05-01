@@ -19,6 +19,7 @@ const languages = [
   { value: "zh", label: "Chinese", flag: "🇨🇳" },
   { value: "ar", label: "Arabic", flag: "🇸🇦" },
   { value: "ru", label: "Russian", flag: "🇷🇺" },
+  { value: "tr", label: "Turkish", flag: "🇹🇷" },
   { value: "ja", label: "Japanese", flag: "🇯🇵" },
 ]
 
@@ -255,6 +256,7 @@ export default function UnifiedChatView() {
           zh: "您能描述一下您的症状吗？",
           ar: "هل يمكنك وصف الأعراض التي تعاني منها؟",
           ru: "Не могли бы вы описать свои симптомы?",
+          tr: "Belirtilen belirtilerinizi açıklayabilir misiniz?",
           ja: "症状を説明していただけますか？",
         },
         patient: {
@@ -265,6 +267,7 @@ export default function UnifiedChatView() {
           zh: "我从昨天开始头痛和发烧。",
           ar: "أعاني من صداع وحمى منذ الأمس.",
           ru: "У меня болит голова и жар со вчерашнего дня.",
+          tr: "Dün yapılan belirtilerinizi açıklayabilir misiniz?",
           ja: "昨日から頭痛と熱があります。",
         },
       }
@@ -424,8 +427,31 @@ export default function UnifiedChatView() {
       }
     }
     
-    // If no language detected or simple format, just return the text with default language
-    console.log("Using raw transcription as fallback with default language");
+    // Fallback: Handle unexpected formats, including the observed one
+    console.log("Transcription format unexpected, attempting fallback extraction.");
+    
+    // Try extracting text after "**Original:** "
+    const originalMarker = "**Original:** ";
+    const originalIndex = transcription.indexOf(originalMarker);
+    if (originalIndex !== -1) {
+      // Find the end of the original text (often before "**English:**" or end of string)
+      const englishMarker = "**English:**";
+      const englishIndex = transcription.indexOf(englishMarker, originalIndex);
+      let extractedText = "";
+      if (englishIndex !== -1) {
+        extractedText = transcription.substring(originalIndex + originalMarker.length, englishIndex).trim();
+      } else {
+        extractedText = transcription.substring(originalIndex + originalMarker.length).trim();
+      }
+      // Remove potential trailing quotes or formatting
+      extractedText = extractedText.replace(/^"/, '').replace(/"$/, '').trim(); 
+      console.log("Extracted text using fallback marker:", extractedText);
+      // We don't know the language for sure in this fallback, use the provided default
+      return { text: extractedText, detectedLanguage: language };
+    }
+
+    // If marker not found, return the whole trimmed transcription as last resort
+    console.log("Fallback marker not found, using raw transcription.");
     return { text: transcription.trim(), detectedLanguage: language };
   }
 
