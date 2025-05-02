@@ -1,4 +1,5 @@
 import { Sidebar } from '@/components/Sidebar';
+import Header from '@/components/Header';
 
 export default function AppLayout({
     children,
@@ -13,10 +14,16 @@ export default function AppLayout({
                 <Sidebar />
             </div>
 
-            {/* Main content area */}
-            <main className="flex-1 overflow-y-auto">
-                {children}
-            </main>
+            {/* Main content area wrapper - Make this a flex column */}
+            <div className="flex flex-col flex-1 overflow-hidden">
+                {/* Add the Header here */}
+                <Header /> 
+
+                {/* Page content - Allow scrolling */}
+                <main className="flex-1 overflow-y-auto">
+                    {children}
+                </main>
+            </div>
         </div>
     );
 }

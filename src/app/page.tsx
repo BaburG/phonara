@@ -7,7 +7,7 @@
 // import Header from '@/components/Header'
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route'; // Adjust path if needed
+import { authOptions } from '@/lib/authOptions';
 import { getChatSessionsCollection } from '@/lib/mongodb';
 
 // This is the ROOT page (e.g., accessed via "/")

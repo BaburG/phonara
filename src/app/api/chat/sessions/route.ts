@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-// Assuming authOptions are defined in this path, adjust if necessary
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+// import { authOptions } from '@/app/api/auth/[...nextauth]/route'; // Old path
+import { authOptions } from '@/lib/authOptions'; // Correct path
 import { getChatSessionsCollection } from '@/lib/mongodb';
 import { ChatSession } from '@/lib/types'; // Import the type
 import { ObjectId } from 'mongodb'; // Needed for potential ObjectId usage if not string
